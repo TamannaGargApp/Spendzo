@@ -1,0 +1,21 @@
+[project]
+name = "expense-ledger"
+version = "0.1.0"
+description = "Personal expense ledger with optional bills and a local AI assistant"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]",
+    "pymongo>=4.9",
+    "pydantic-settings",
+    "email-validator",
+    "pyjwt",
+    "pwdlib[argon2]",
+    "python-multipart",
+    "ollama",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "httpx", "ruff"]
+
+[tool.uv]
+package = false

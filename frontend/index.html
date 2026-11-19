@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Ledger</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<section id="auth" class="hidden">
+  <div class="auth-card">
+    <h1 class="serif">Expense Ledger</h1>
+    <p id="auth-sub">Sign in to see your spending.</p>
+    <div class="field"><label for="a-email">Email</label><input id="a-email" type="email" autocomplete="email"></div>
+    <div class="field"><label for="a-pass">Password (8+ characters)</label><input id="a-pass" type="password" autocomplete="current-password"></div>
+    <div class="err" id="a-err"></div>
+    <button class="primary" id="a-go" style="width:100%">Sign in</button>
+    <div class="switch"><span id="a-switch-text">No account yet?</span> <button class="link" id="a-switch">Create one</button></div>
+  </div>
+</section>
+
+<div id="app" class="hidden">
+  <header><div class="bar">
+    <span class="brand serif">Expense Ledger</span>
+    <nav id="nav">
+      <button data-tab="overview">Overview</button>
+      <button data-tab="expenses">Expenses</button>
+      <button data-tab="chat">Assistant</button>
+    </nav>
+    <span class="who" id="who"></span>
+    <button id="logout">Sign out</button>
+  </div></header>
+  <main id="view"></main>
+</div>
+
+<dialog id="dlg">
+  <h2 id="dlg-title">Add expense</h2>
+  <div class="fgrid">
+    <div><label for="f-date">Date</label><input id="f-date" type="date"></div>
+    <div><label for="f-amount">Amount (₹)</label><input id="f-amount" type="number" min="0.01" step="0.01"></div>
+    <div class="full"><label for="f-cat">Category</label><input id="f-cat" list="cats" maxlength="50"><datalist id="cats"></datalist></div>
+    <div class="full"><label for="f-desc">Description</label><input id="f-desc" maxlength="300"></div>
+    <div class="full"><label for="f-tags">Tags (comma separated)</label><input id="f-tags"></div>
+    <div class="full"><label for="f-file">Bill (optional, PDF, JPG or PNG up to 5 MB)</label><input id="f-file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/png,image/jpeg"><div id="f-bills"></div></div>
+  </div>
+  <div class="err" id="f-err"></div>
+  <div class="actions"><button id="f-cancel">Cancel</button><button class="primary" id="f-save">Save expense</button></div>
+</dialog>
+
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
