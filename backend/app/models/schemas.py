@@ -1,7 +1,9 @@
 from datetime import date as Date
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from app.models.constants import CATEGORIES
 
 
 class Credentials(BaseModel):
@@ -23,16 +25,31 @@ class ExpenseIn(BaseModel):
     date: Date
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     category: str = Field(min_length=1, max_length=50)
+    subcategory: str | None = Field(None, max_length=50)
+    start_use_date: Date | None = None
+    finished_on: Date | None = None
     description: str = Field("", max_length=300)
     tags: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator("category")
     @classmethod
     def clean_category(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("category is required")
-        return v
+        wanted = v.strip().lower()
+        for c in CATEGORIES:
+            if c.lower() == wanted:
+                return c
+        raise ValueError("category must be one of: " + ", ".join(CATEGORIES))
+
+    @field_validator("subcategory")
+    @classmethod
+    def clean_subcategory(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
+
+    @model_validator(mode="after")
+    def check_usage_dates(self):
+        if self.start_use_date and self.finished_on and self.finished_on < self.start_use_date:
+            raise ValueError("Finished date cannot be before the start use date")
+        return self
 
     @field_validator("tags")
     @classmethod

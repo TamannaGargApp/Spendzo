@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.db import public
 from app.core.deps import CurrentUser, get_current_user, owner_filter
+from app.models.constants import CATEGORIES
 from app.models.schemas import ExpenseIn
 from app.repositories import expenses as repo
 from app.routers.bills import delete_bills_of_expense
@@ -17,6 +18,9 @@ def _doc(body: ExpenseIn) -> dict:
         "date": body.date.isoformat(),
         "amount_paise": int((body.amount * 100).to_integral_value()),
         "category": body.category,
+        "subcategory": body.subcategory,
+        "start_use_date": _iso(body.start_use_date),
+        "finished_on": _iso(body.finished_on),
         "description": body.description,
         "tags": body.tags,
     }
@@ -43,9 +47,13 @@ async def summary(
     )
 
 
-@router.get("/categories")
-async def categories(user: CurrentUser = Depends(get_current_user)):
-    return await repo.categories(owner_filter(user))
+@router.get("/options")
+async def options(user: CurrentUser = Depends(get_current_user)):
+    """Dropdown data: fixed categories plus the subcategories this user has used."""
+    return {
+        "categories": CATEGORIES,
+        "subcategories": await repo.subcategories(owner_filter(user)),
+    }
 
 
 @router.get("")

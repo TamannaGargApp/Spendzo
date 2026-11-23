@@ -37,12 +37,16 @@
 <dialog id="dlg">
   <h2 id="dlg-title">Add expense</h2>
   <div class="fgrid">
-    <div><label for="f-date">Date</label><input id="f-date" type="date"></div>
+    <div><label for="f-date">Purchase date</label><input id="f-date" type="date"></div>
     <div><label for="f-amount">Amount (₹)</label><input id="f-amount" type="number" min="0.01" step="0.01"></div>
-    <div class="full"><label for="f-cat">Category</label><input id="f-cat" list="cats" maxlength="50"><datalist id="cats"></datalist></div>
+    <div><label for="f-cat">Category</label><select id="f-cat"></select></div>
+    <div><label for="f-sub">Subcategory (optional)</label><input id="f-sub" list="subs" maxlength="50"><datalist id="subs"></datalist></div>
+    <div><label for="f-start">Start use date (optional)</label><input id="f-start" type="date"></div>
+    <div><label for="f-end">Finished on (optional)</label><input id="f-end" type="date"></div>
     <div class="full"><label for="f-desc">Description</label><input id="f-desc" maxlength="300"></div>
     <div class="full"><label for="f-tags">Tags (comma separated)</label><input id="f-tags"></div>
-    <div class="full"><label for="f-file">Bill (optional, PDF, JPG or PNG up to 5 MB)</label><input id="f-file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/png,image/jpeg"><div id="f-bills"></div></div>
+    <div class="full"><label for="f-file">Attachments (optional): PDF, Word, Excel, JPG or PNG, up to 5 MB each</label>
+      <input id="f-file" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"><div id="f-bills"></div></div>
   </div>
   <div class="err" id="f-err"></div>
   <div class="actions"><button id="f-cancel">Cancel</button><button class="primary" id="f-save">Save expense</button></div>

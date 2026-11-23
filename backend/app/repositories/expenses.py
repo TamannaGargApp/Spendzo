@@ -10,7 +10,9 @@ def _col():
     return get_db().expenses
 
 
-def _query(flt: dict, date_from=None, date_to=None, category=None, search=None) -> dict:
+def _query(
+    flt: dict, date_from=None, date_to=None, category=None, search=None, finished=None
+) -> dict:
     q: dict = {**flt, "deleted_at": None}
     if date_from or date_to:
         q["date"] = {}
@@ -24,7 +26,12 @@ def _query(flt: dict, date_from=None, date_to=None, category=None, search=None) 
         q["$or"] = [
             {"description": {"$regex": re.escape(search), "$options": "i"}},
             {"tags": {"$regex": re.escape(search), "$options": "i"}},
+            {"subcategory": {"$regex": re.escape(search), "$options": "i"}},
         ]
+    if finished is True:
+        q["finished_on"] = {"$ne": None}
+    elif finished is False:
+        q["finished_on"] = None
     return q
 
 
@@ -73,8 +80,13 @@ async def soft_delete(flt: dict, expense_id: str) -> bool:
     return res.modified_count == 1
 
 
-async def categories(flt: dict) -> list[str]:
-    return sorted(await _col().distinct("category", {**flt, "deleted_at": None}))
+async def subcategories(flt: dict) -> dict[str, list[str]]:
+    pipeline = [
+        {"$match": {**flt, "deleted_at": None, "subcategory": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$category", "subs": {"$addToSet": "$subcategory"}}},
+    ]
+    cur = await _col().aggregate(pipeline)
+    return {g["_id"]: sorted(g["subs"]) for g in await cur.to_list()}
 
 
 async def summary(

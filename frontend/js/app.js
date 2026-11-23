@@ -136,19 +136,31 @@ async function viewOverview() {
 
 /* ---------- expenses ---------- */
 const F = { date_from: '', date_to: '', category: '' };
+S.opts = { categories: [], subcategories: {} };
+async function loadOptions() { try { S.opts = await api('/api/expenses/options'); } catch {} }
+const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: '2-digit'});
+function usageHtml(i) {
+  const a = i.start_use_date, b = i.finished_on;
+  if (a && b) { const days = Math.round((new Date(b) - new Date(a)) / 864e5) + 1; return `${fmtD(a)} → ${fmtD(b)}<div class="sub">${days} ${days === 1 ? 'day' : 'days'} in use</div>`; }
+  if (a) return `In use since ${fmtD(a)}`;
+  if (b) return `Finished ${fmtD(b)}`;
+  return '<span class="sub">—</span>';
+}
+
 async function viewExpenses() {
+  await loadOptions();
   $('#view').innerHTML = `
     <div class="toolbar"><h2>Expenses</h2><button class="primary" id="add">Add expense</button></div>
     <div class="filters">
       <div><label for="q-from">From</label><input id="q-from" type="date" value="${F.date_from}"></div>
       <div><label for="q-to">To</label><input id="q-to" type="date" value="${F.date_to}"></div>
-      <div><label for="q-cat">Category</label><input id="q-cat" value="${esc(F.category)}"></div>
+      <div><label for="q-cat">Category</label><select id="q-cat"><option value="">All categories</option>${S.opts.categories.map(c => `<option ${c === F.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
       <button id="q-go">Filter</button>
       <button id="q-clear">Clear filters</button>
     </div>
     <div class="err" id="x-err"></div><div id="list"></div>`;
   $('#add').onclick = () => openForm();
-  $('#q-go').onclick = () => { F.date_from = $('#q-from').value; F.date_to = $('#q-to').value; F.category = $('#q-cat').value.trim(); S.page = 1; loadList(); };
+  $('#q-go').onclick = () => { F.date_from = $('#q-from').value; F.date_to = $('#q-to').value; F.category = $('#q-cat').value; S.page = 1; loadList(); };
   $('#q-clear').onclick = () => { F.date_from = F.date_to = F.category = ''; S.page = 1; viewExpenses(); };
   loadList();
 }
@@ -160,56 +172,93 @@ async function loadList() {
     S.rows = Object.fromEntries(d.items.map(i => [i.id, i]));
     const pages = Math.max(1, Math.ceil(d.total / d.page_size));
     $('#list').innerHTML = d.items.length ? `
-      <div class="ledger"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="r">Amount</th><th>Bills</th><th></th></tr></thead><tbody>
-      ${d.items.map(i => `<tr><td class="num">${esc(i.date)}</td><td>${esc(i.category)}</td>
+      <div class="ledger"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Usage</th><th class="r">Amount</th><th>Files</th><th></th></tr></thead><tbody>
+      ${d.items.map(i => `<tr><td class="num">${esc(i.date)}</td>
+        <td>${esc(i.category)}${i.subcategory ? `<div class="sub">${esc(i.subcategory)}</div>` : ''}</td>
         <td>${esc(i.description)} ${i.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</td>
-        <td class="r num">${inr(i.amount)}</td><td>${i.bill_ids.length || ''}</td>
+        <td class="usage">${usageHtml(i)}</td>
+        <td class="r num">${inr(i.amount)}</td><td class="num">${i.bill_ids.length || ''}</td>
         <td class="r"><button class="link" data-edit="${i.id}">Edit</button><button class="link danger" data-del="${i.id}">Delete</button></td></tr>`).join('')}
       </tbody></table></div>
       <div class="pager"><span>${d.total} total</span><span><button id="pv" ${S.page <= 1 ? 'disabled' : ''}>Previous</button> Page ${S.page} of ${pages} <button id="nx" ${S.page >= pages ? 'disabled' : ''}>Next</button></span></div>`
       : '<div class="panel empty">No expenses match. Add one, or clear the filters.</div>';
     $('#list').onclick = async e => {
       if (e.target.dataset.edit) openForm(S.rows[e.target.dataset.edit]);
-      if (e.target.dataset.del && confirm('Delete this expense and its bills?')) { await api('/api/expenses/' + e.target.dataset.del, {method:'DELETE'}); loadList(); }
+      if (e.target.dataset.del && confirm('Delete this expense and its files?')) { await api('/api/expenses/' + e.target.dataset.del, {method:'DELETE'}); loadList(); }
       if (e.target.id === 'pv') { S.page--; loadList(); }
       if (e.target.id === 'nx') { S.page++; loadList(); }
     };
   } catch (e) { $('#x-err').textContent = e.message; }
 }
 
-/* ---------- expense form + bills ---------- */
+/* ---------- expense form + attachments ---------- */
+const refreshAfterSave = () => S.tab === 'expenses' ? loadList() : go(S.tab);
+function fillSubs() {
+  $('#subs').innerHTML = (S.opts.subcategories[$('#f-cat').value] || []).map(s => `<option value="${esc(s)}">`).join('');
+}
 async function openForm(exp = null) {
   S.editing = exp; $('#f-err').textContent = ''; $('#f-file').value = '';
+  await loadOptions();
+  const cats = [...S.opts.categories];
+  if (exp && !cats.includes(exp.category)) cats.push(exp.category);   // older records with a custom category
   $('#dlg-title').textContent = exp ? 'Edit expense' : 'Add expense';
+  $('#f-cat').innerHTML = '<option value="" disabled>Select category</option>' + cats.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#f-cat').value = exp?.category || '';
   $('#f-date').value = exp?.date || todayStr();
-  $('#f-amount').value = exp?.amount ?? ''; $('#f-cat').value = exp?.category || '';
+  $('#f-amount').value = exp?.amount ?? '';
+  $('#f-sub').value = exp?.subcategory || '';
+  $('#f-start').value = exp?.start_use_date || ''; $('#f-end').value = exp?.finished_on || '';
   $('#f-desc').value = exp?.description || ''; $('#f-tags').value = (exp?.tags || []).join(', ');
-  $('#cats').innerHTML = (await api('/api/expenses/categories').catch(() => [])).map(c => `<option value="${esc(c)}">`).join('');
-  await renderBills(); $('#dlg').showModal();
+  fillSubs(); await renderBills(); $('#dlg').showModal();
 }
+$('#f-cat').onchange = fillSubs;
+
 async function renderBills() {
   const box = $('#f-bills'); box.innerHTML = '';
   if (!S.editing) return;
   const bills = await api('/api/bills?expense_id=' + S.editing.id).catch(() => []);
-  box.innerHTML = bills.map(b => `<div class="billrow"><span>${esc(b.filename)}</span><span><button class="link" data-view="${b.id}">View</button><button class="link danger" data-rm="${b.id}">Remove</button></span></div>`).join('');
+  box.innerHTML = bills.map(b => `<div class="billrow"><span>${esc(b.filename)}</span><span>
+    <button class="link" data-open="${b.id}" data-name="${esc(b.filename)}" data-ct="${esc(b.content_type)}">${/pdf|image/.test(b.content_type) ? 'View' : 'Download'}</button>
+    <button class="link danger" data-rm="${b.id}">Remove</button></span></div>`).join('');
 }
 $('#f-bills').onclick = async e => {
-  if (e.target.dataset.view) {
-    const w = window.open('', '_blank');
-    try { const r = await api(`/api/bills/${e.target.dataset.view}/download`, {raw:true}); w.location = URL.createObjectURL(await r.blob()); } catch (x) { w.close(); $('#f-err').textContent = x.message; }
+  const t = e.target;
+  if (t.dataset.open) {
+    const viewable = /pdf|image/.test(t.dataset.ct);
+    const w = viewable ? window.open('', '_blank') : null;
+    try {
+      const r = await api(`/api/bills/${t.dataset.open}/download`, {raw: true});
+      const url = URL.createObjectURL(await r.blob());
+      if (w) w.location = url;
+      else { const a = document.createElement('a'); a.href = url; a.download = t.dataset.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000); }
+    } catch (x) { if (w) w.close(); $('#f-err').textContent = x.message; }
   }
-  if (e.target.dataset.rm) { await api('/api/bills/' + e.target.dataset.rm, {method:'DELETE'}); renderBills(); loadList(); }
+  if (t.dataset.rm) { await api('/api/bills/' + t.dataset.rm, {method:'DELETE'}); renderBills(); refreshAfterSave(); }
 };
 $('#f-cancel').onclick = () => $('#dlg').close();
 $('#f-save').onclick = async () => {
   $('#f-err').textContent = '';
-  const body = {date: $('#f-date').value, amount: $('#f-amount').value, category: $('#f-cat').value, description: $('#f-desc').value,
-                tags: $('#f-tags').value.split(',')};
+  const body = {
+    date: $('#f-date').value, amount: $('#f-amount').value, category: $('#f-cat').value,
+    subcategory: $('#f-sub').value.trim() || null,
+    start_use_date: $('#f-start').value || null, finished_on: $('#f-end').value || null,
+    description: $('#f-desc').value, tags: $('#f-tags').value.split(','),
+  };
+  if (!body.category) { $('#f-err').textContent = 'Choose a category'; return; }
   try {
     const saved = await api(S.editing ? '/api/expenses/' + S.editing.id : '/api/expenses', {method: S.editing ? 'PUT' : 'POST', json: body});
-    const file = $('#f-file').files[0];
-    if (file) { const fd = new FormData(); fd.append('file', file); fd.append('expense_id', saved.id); await api('/api/bills', {method:'POST', form: fd}); }
-    $('#dlg').close(); S.tab === 'expenses' ? loadList() : go(S.tab);
+    S.editing = saved;   // a retry now updates this expense instead of creating a duplicate
+    const failed = [];
+    for (const file of $('#f-file').files) {
+      const fd = new FormData(); fd.append('file', file); fd.append('expense_id', saved.id);
+      try { await api('/api/bills', {method: 'POST', form: fd}); } catch (e) { failed.push(`${file.name}: ${e.message}`); }
+    }
+    refreshAfterSave();
+    if (failed.length) {
+      $('#f-err').textContent = 'Expense saved, but some files were not uploaded. ' + failed.join(' | ');
+      $('#f-file').value = ''; $('#dlg-title').textContent = 'Edit expense'; await renderBills(); return;
+    }
+    $('#dlg').close();
   } catch (e) { $('#f-err').textContent = e.message; }
 };
 

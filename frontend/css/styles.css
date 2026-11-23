@@ -133,3 +133,10 @@ dialog h2{margin-top:0}
 /* filters v2 */
 .filters{grid-template-columns:repeat(3,1fr) auto auto}
 @media(max-width:760px){.filters{grid-template-columns:1fr 1fr}}
+
+/* expense form v2 */
+dialog{width:min(580px,94vw);max-height:92vh;overflow:auto}
+table{min-width:820px}
+tbody tr td:first-child{white-space:nowrap}
+.usage{font-size:14px;white-space:nowrap}
+select{width:100%;padding:8px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--sheet)}

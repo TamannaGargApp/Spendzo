@@ -1,3 +1,7 @@
+import io
+import zipfile
+from pathlib import Path
+
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -11,18 +15,42 @@ from app.services.storage import storage
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
 
-# magic bytes -> (content type, extension). We trust the bytes, not the filename.
-SIGNATURES = [
-    (b"%PDF", "application/pdf", ".pdf"),
-    (b"\x89PNG\r\n\x1a\n", "image/png", ".png"),
-    (b"\xff\xd8\xff", "image/jpeg", ".jpg"),
-]
+MIME = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".doc": "application/msword",
+    ".xls": "application/vnd.ms-excel",
+}
+OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # legacy .doc / .xls container
 
 
-def _sniff(data: bytes) -> tuple[str, str] | None:
-    for magic, ctype, ext in SIGNATURES:
-        if data.startswith(magic):
-            return ctype, ext
+def _sniff(data: bytes, filename: str) -> str | None:
+    """Work out the real file type from its bytes (never trust the filename alone)."""
+    if data.startswith(b"%PDF"):
+        return ".pdf"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"PK\x03\x04"):  # modern Office files are zip archives
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                names = z.namelist()
+        except zipfile.BadZipFile:
+            return None
+        if any(n.lower().endswith("vbaproject.bin") for n in names):
+            return None  # macro-enabled documents are refused
+        if "word/document.xml" in names:
+            return ".docx"
+        if "xl/workbook.xml" in names:
+            return ".xlsx"
+        return None
+    if data.startswith(OLE):
+        ext = Path(filename or "").suffix.lower()
+        return ext if ext in (".doc", ".xls") else None
     return None
 
 
@@ -46,10 +74,10 @@ async def upload_bill(
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(413, f"File is larger than {settings.max_upload_mb} MB")
-    kind = _sniff(data)
-    if not kind:
-        raise HTTPException(415, "Only PDF, JPG or PNG files are accepted")
-    ctype, ext = kind
+    ext = _sniff(data, file.filename or "")
+    if not ext:
+        raise HTTPException(415, "Only PDF, Word, Excel, JPG or PNG files are accepted")
+    ctype = MIME[ext]
 
     key = storage.save(user.id, data, ext)
     bill = await repo.create(
@@ -84,7 +112,12 @@ async def download_bill(bill_id: str, user: CurrentUser = Depends(get_current_us
         storage.path(bill["storage_key"]),
         media_type=bill["content_type"],
         filename=bill["filename"],
-        content_disposition_type="inline",
+        # only PDFs and images open in the browser; Office files are downloaded
+        content_disposition_type=(
+            "inline"
+            if bill["content_type"] == "application/pdf" or bill["content_type"].startswith("image/")
+            else "attachment"
+        ),
     )
 
 

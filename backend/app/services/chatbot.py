@@ -43,6 +43,7 @@ class RangeArgs(BaseModel):
 
 class ListArgs(RangeArgs):
     search: str | None = None
+    finished: bool | None = None
     limit: int = Field(10, ge=1, le=25)
 
 
@@ -72,7 +73,7 @@ def _fn(name: str, desc: str, props: dict, required: list[str] | None = None) ->
 
 
 _D = {"type": "string", "description": "YYYY-MM-DD"}
-_CAT = {"type": "string", "description": "category name, e.g. Food"}
+_CAT = {"type": "string", "description": "one of: Personal care, Health care, Makeup, Clothes, Accessories, Other"}
 _SEARCH = {"type": "string", "description": "word to match in the description or tags"}
 
 TOOLS = [
@@ -80,6 +81,7 @@ TOOLS = [
         {"date_from": _D, "date_to": _D, "category": _CAT}),
     _fn("list_expenses", "List individual expenses, newest first, with optional filters.",
         {"date_from": _D, "date_to": _D, "category": _CAT, "search": _SEARCH,
+         "finished": {"type": "boolean", "description": "true = only items marked finished, false = only items still in use or unfinished"},
          "limit": {"type": "integer", "description": "max rows, default 10"}}),
     _fn("top_categories", "Categories ranked by spending, highest first.",
         {"date_from": _D, "date_to": _D, "limit": {"type": "integer"}}),
@@ -102,13 +104,15 @@ async def _run_tool(name: str, raw: dict, user: CurrentUser) -> dict:
             a = ListArgs(**raw)
             rows, total = await repo.list_(
                 flt, limit=a.limit, date_from=a.date_from, date_to=a.date_to,
-                category=a.category, search=a.search,
+                category=a.category, search=a.search, finished=a.finished,
             )
             return {
                 "matching_count": total,
                 "expenses": [
                     {"date": r["date"], "amount_inr": r["amount_paise"] / 100,
-                     "category": r["category"], "description": r["description"],
+                     "category": r["category"], "subcategory": r.get("subcategory"),
+                     "start_use_date": r.get("start_use_date"), "finished_on": r.get("finished_on"),
+                     "description": r["description"],
                      "bills_attached": len(r.get("bill_ids", []))}
                     for r in rows
                 ],
